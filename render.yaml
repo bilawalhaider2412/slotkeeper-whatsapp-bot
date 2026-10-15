@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: slotkeeper-whatsapp-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    # Single worker: the reminder scheduler runs inside this process,
+    # so more workers would send duplicate reminders.
+    startCommand: gunicorn app:app --workers 1 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
