@@ -114,8 +114,42 @@ def index():
 @app.route("/dashboard")
 @_protected
 def dashboard():
-    return render_template("dashboard.html", business=BUSINESS,
-                           counts=db.counts(), scheduler=scheduler_status())
+    try:
+        return render_template("dashboard.html", business=BUSINESS,
+                               counts=db.counts(), scheduler=scheduler_status())
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return (f"<h1>Dashboard failed to load</h1>"
+                f"<p><b>{type(exc).__name__}:</b> {exc}</p>"
+                f"<p>Open <a href='/debug'>/debug</a> for details.</p>"), 500
+
+
+@app.route("/debug")
+@_protected
+def debug():
+    """Temporary diagnostic page: shows exactly what the server sees."""
+    import pathlib
+    root = pathlib.Path(".")
+    info = {
+        "cwd": str(root.resolve()),
+        "root_files": sorted(p.name for p in root.iterdir()),
+        "templates": sorted(p.name for p in (root / "templates").iterdir()) if (root / "templates").exists() else "MISSING - templates folder not found!",
+        "env_set": {k: bool(os.environ.get(k)) for k in
+                    ["VERIFY_TOKEN", "WHATSAPP_TOKEN", "PHONE_NUMBER_ID", "APP_SECRET", "OWNER_USER"]},
+    }
+    try:
+        info["db_counts"] = db.counts()
+    except Exception as exc:
+        info["db_counts"] = f"ERROR: {type(exc).__name__}: {exc}"
+    try:
+        render_template("dashboard.html", business=BUSINESS, counts=db.counts(),
+                        scheduler=scheduler_status())
+        info["template_renders"] = True
+    except Exception as exc:
+        info["template_renders"] = f"ERROR: {type(exc).__name__}: {exc}"
+    rows = "".join(f"<tr><td><b>{k}</b></td><td><pre>{v}</pre></td></tr>" for k, v in info.items())
+    return f"<h1>SlotKeeper debug</h1><table border='1' cellpadding='8'>{rows}</table>"
 
 
 @app.route("/api/scheduler")
