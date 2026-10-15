@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlotKeeper — {{ business.name }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+  header { background: #1F4E79; color: #fff; padding: 14px 20px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 2px 0 0; font-size: 13px; opacity: .85; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px 18px; flex: 1; min-width: 140px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card b { font-size: 26px; display: block; }
+  .card span { font-size: 13px; color: #666; }
+  .card.warn b { color: #c77400; }
+  h2 { font-size: 17px; margin: 22px 0 10px; }
+  .filters { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .filters button, .btn { border: 1px solid #ccc; background: #fff; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  .filters button.active { background: #1F4E79; color: #fff; border-color: #1F4E79; }
+  .btn.primary { background: #1F4E79; color: #fff; border-color: #1F4E79; }
+  .btn.ok { background: #1e7e34; color: #fff; border-color: #1e7e34; }
+  .btn.bad { background: #c82333; color: #fff; border-color: #c82333; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #f0f3f6; font-size: 12px; text-transform: uppercase; color: #555; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .awaiting { background: #fff3cd; color: #856404; }
+  .confirmed { background: #d4edda; color: #155724; }
+  .cancelled { background: #f8d7da; color: #721c24; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .row-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; }
+  #draft { background: #fff; border: 1px dashed #1F4E79; border-radius: 10px; padding: 14px; margin-top: 12px; display: none; white-space: pre-wrap; font-size: 14px; }
+  #draft.show { display: block; }
+  .hint { font-size: 12px; color: #777; margin-top: 6px; }
+  @media (max-width: 640px) { table { font-size: 12px; } th, td { padding: 8px 6px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SlotKeeper — {{ business.name }}</h1>
+  <p>{{ business.city }} · Bookings from your WhatsApp bot</p>
+</header>
+<div class="wrap">
+  <div class="cards">
+    <div class="card warn"><b id="c-awaiting">{{ counts.awaiting }}</b><span>Awaiting confirmation</span></div>
+    <div class="card"><b id="c-total">{{ counts.total }}</b><span>Total bookings</span></div>
+    <div class="card"><b id="c-waiting">{{ counts.waiting }}</b><span>Waiting list</span></div>
+    <div class="card"><b id="c-due">{{ counts.due_reminders }}</b><span>Pending reminders</span></div>
+  </div>
+
+  <h2>Bookings</h2>
+  <div class="filters" id="filters">
+    <button data-f="" class="active">All</button>
+    <button data-f="Awaiting confirmation">Awaiting</button>
+    <button data-f="Confirmed">Confirmed</button>
+    <button data-f="Cancelled">Cancelled</button>
+    <button id="export" style="margin-left:auto">Export CSV</button>
+  </div>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr><th>#</th><th>Customer</th><th>Service</th><th>When</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="bookings"><tr><td colspan="6">Loading…</td></tr></tbody>
+  </table>
+  </div>
+  <div id="draft"></div>
+  <p class="hint">“Send confirmation” delivers via WhatsApp automatically when the API is connected; otherwise it shows you the ready-to-send text to forward manually.</p>
+
+  <h2>Reminder queue</h2>
+  <p class="hint">Automatic 24h + 2h reminders. The scheduler runs inside this app
+  (every {{ scheduler.poll_seconds }}s{% if scheduler.last_run_ago_s is not none %} — last check {{ scheduler.last_run_ago_s }}s ago{% endif %}{% if scheduler.last_error %} — <b style="color:#c82333">error: {{ scheduler.last_error }}</b>{% endif %}).
+  Sent via WhatsApp when the API is connected; otherwise shown here for manual sending.</p>
+  <table>
+    <thead><tr><th>Booking</th><th>Customer</th><th>Type</th><th>Send at (UTC)</th><th>Status</th></tr></thead>
+    <tbody id="reminders"><tr><td colspan="5">Loading…</td></tr></tbody>
+  </table>
+
+  <h2>Waiting list</h2>  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Note</th><th></th></tr></thead>
+    <tbody id="waiting"><tr><td colspan="5">Loading…</td></tr></tbody>
+  </table>
+  <div class="row-form">
+    <input id="w-name" placeholder="Name">
+    <input id="w-phone" placeholder="Phone / WhatsApp">
+    <input id="w-note" placeholder="Note (optional)">
+    <button class="btn primary" id="w-add">Add</button>
+  </div>
+</div>
+<script>
+const pill = s => `<span class="pill ${s==='Confirmed'?'confirmed':s==='Cancelled'?'cancelled':'awaiting'}">${s}</span>`;
+let curFilter = '';
+
+async function load() {
+  const bs = await (await fetch('/api/bookings' + (curFilter ? '?status=' + encodeURIComponent(curFilter) : ''))).json();
+  document.getElementById('bookings').innerHTML = bs.length ? bs.map(b => `
+    <tr>
+      <td>#${b.id}</td>
+      <td><b>${esc(b.name)}</b><br><small>${esc(b.phone)}</small></td>
+      <td>${esc(b.service)}<br><small>${esc(b.price)}</small></td>
+      <td>${esc(b.date)}<br><small>${esc(b.time)}</small></td>
+      <td>${pill(b.status)}</td>
+      <td><div class="actions">
+        ${b.status !== 'Confirmed' ? `<button class="btn ok" onclick="setStatus(${b.id},'Confirmed')">Confirm</button>` : ''}
+        ${b.status !== 'Cancelled' ? `<button class="btn bad" onclick="setStatus(${b.id},'Cancelled')">Cancel</button>` : ''}
+        <button class="btn" onclick="notify(${b.id},'confirmation')">Send confirmation</button>
+        <button class="btn" onclick="notify(${b.id},'reminder')">Reminder</button>
+        ${b.status === 'Confirmed' || b.status === 'Awaiting confirmation' ? `<button class="btn" onclick="resched(${b.id})">Reschedule</button>` : ''}
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="6">No bookings yet — they appear here when customers book on WhatsApp.</td></tr>';
+
+  const w = await (await fetch('/api/waiting')).json();
+  document.getElementById('waiting').innerHTML = w.length ? w.map(x => `
+    <tr><td>#${x.id}</td><td>${esc(x.name)}</td><td>${esc(x.phone)}</td><td>${esc(x.note || '')}</td>
+    <td><button class="btn bad" onclick="delWaiting(${x.id})">Remove</button></td></tr>`).join('')
+    : '<tr><td colspan="5">Waiting list is empty.</td></tr>';
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function setStatus(id, status) {
+  await fetch(`/api/bookings/${id}/status`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status})});
+  load();
+}
+async function notify(id, kind) {
+  const r = await (await fetch(`/api/bookings/${id}/notify`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind})})).json();
+  const d = document.getElementById('draft');
+  if (r.sent) { d.classList.remove('show'); alert('Sent on WhatsApp.'); }
+  else { d.textContent = 'WhatsApp API not connected — copy & send manually:\n\n' + r.draft; d.classList.add('show'); d.scrollIntoView(); }
+}
+async function delWaiting(id) {
+  await fetch(`/api/waiting/${id}`, {method: 'DELETE'});
+  load();
+}
+async function resched(id) {
+  const when = prompt('New date and time (e.g. "Saturday 5pm" or "21 Oct 11am"):');
+  if (!when) return;
+  const r = await (await fetch(`/api/bookings/${id}/reschedule`, {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date: when.trim(), time: ''})})).json();
+  if (r.ok) { alert('Moved to ' + r.when); load(); }
+  else { alert('Could not reschedule: ' + (r.error || 'unknown error')); }
+}
+async function loadReminders() {
+  const rs = await (await fetch('/api/reminders')).json();
+  const stPill = s => `<span class="pill ${s==='sent'?'confirmed':(s==='failed'||s==='expired')?'cancelled':'awaiting'}">${s}</span>`;
+  document.getElementById('reminders').innerHTML = rs.length ? rs.map(r => `
+    <tr><td>#${r.booking_id}</td><td>${esc(r.customer)}<br><small>${esc(r.service || '')}</small></td>
+    <td>${esc(r.kind)} reminder</td><td>${esc(r.send_at)}</td><td>${stPill(r.status)}</td></tr>`).join('')
+    : '<tr><td colspan="5">No reminders scheduled yet.</td></tr>';
+}
+document.getElementById('filters').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON' || e.target.id === 'export') return;
+  document.querySelectorAll('#filters button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  curFilter = e.target.dataset.f;
+  load();
+});
+document.getElementById('export').onclick = () => location.href = '/export.csv';
+document.getElementById('w-add').onclick = async () => {
+  const name = document.getElementById('w-name').value.trim();
+  const phone = document.getElementById('w-phone').value.trim();
+  if (!name || !phone) { alert('Name and phone are required.'); return; }
+  await fetch('/api/waiting', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, phone, note: document.getElementById('w-note').value.trim()})});
+  document.getElementById('w-name').value = document.getElementById('w-phone').value = document.getElementById('w-note').value = '';
+  load();
+};
+load();
+loadReminders();
+</script>
+</body>
+</html>
