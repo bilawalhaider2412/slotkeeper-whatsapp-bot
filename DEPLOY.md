@@ -44,6 +44,10 @@ Render deploys from a GitHub repo. The code is ready at
    | `PHONE_NUMBER_ID` | From Meta (Part 3, step 5) — leave empty for now |
    | `OWNER_USER` | `admin` (or the client's name) |
    | `OWNER_PASSWORD` | A strong password — this guards the client dashboard |
+   | `MISSED_CALL_SECRET` | Make one up — shared secret for the missed-call notifier that POSTs to `/api/missed-call` |
+   | `MISSED_CALL_COOLDOWN_MIN` | `30` — minutes before the same caller gets another text-back |
+   | `MISSED_CALL_RATE_PER_MIN` | `30` — max notifier hits per minute per IP (abuse protection) |
+   | `MISSED_CALL_DAILY_CAP` | `200` — max text-backs sent per day (bounds WhatsApp cost) |
 
 5. Click **Create Web Service**. Wait ~3–5 min for the build.
 6. When it's live, copy your URL: `https://slotkeeper-whatsapp-bot.onrender.com`

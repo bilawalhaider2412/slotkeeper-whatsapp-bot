@@ -62,6 +62,17 @@ def init_db():
                 created_at TEXT NOT NULL
             )"""
         )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS missed_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                caller_phone TEXT NOT NULL,
+                called_at TEXT NOT NULL,
+                textback_sent INTEGER NOT NULL DEFAULT 0,
+                sent_at TEXT,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            )"""
+        )
 
 
 def _now_utc():
@@ -184,7 +195,10 @@ def counts():
         waiting = c.execute("SELECT COUNT(*) FROM waiting_list").fetchone()[0]
         due = c.execute(
             "SELECT COUNT(*) FROM reminders WHERE status = 'pending'").fetchone()[0]
-    return {"total": total, "awaiting": awaiting, "waiting": waiting, "due_reminders": due}
+        missed = c.execute(
+            "SELECT COUNT(*) FROM missed_calls WHERE textback_sent = 1").fetchone()[0]
+    return {"total": total, "awaiting": awaiting, "waiting": waiting,
+            "due_reminders": due, "missed_textbacks": missed}
 
 
 # ---------- reminders ----------
@@ -291,3 +305,102 @@ def list_waiting():
 def delete_waiting(entry_id):
     with _conn() as c:
         c.execute("DELETE FROM waiting_list WHERE id = ?", (entry_id,))
+
+
+# ---------- missed calls (text-back service) ----------
+
+def log_missed_call(caller_phone, cooldown_minutes=30):
+    """Record a missed call. Returns (entry, should_send).
+
+    should_send is False when this caller already got a text-back inside
+    the cooldown window — prevents spamming repeat callers.
+    """
+    now = _now_utc()
+    with _conn() as c:
+        recent = c.execute(
+            """SELECT id FROM missed_calls
+               WHERE caller_phone = ? AND textback_sent = 1
+               ORDER BY id DESC LIMIT 1""",
+            (caller_phone,)).fetchone()
+        should_send = True
+        if recent:
+            last = c.execute(
+                "SELECT sent_at FROM missed_calls WHERE id = ?",
+                (recent["id"],)).fetchone()
+            sent_at = _parse_dt(last["sent_at"]) if last and last["sent_at"] else None
+            if sent_at and (now - sent_at) < timedelta(minutes=cooldown_minutes):
+                should_send = False
+        cur = c.execute(
+            """INSERT INTO missed_calls
+               (caller_phone, called_at, textback_sent, created_at)
+               VALUES (?, ?, 0, ?)""",
+            (caller_phone, now.isoformat(timespec="seconds"),
+             now.isoformat(timespec="seconds")),
+        )
+        entry_id = cur.lastrowid
+        row = c.execute(
+            "SELECT * FROM missed_calls WHERE id = ?", (entry_id,)).fetchone()
+        return dict(row), should_send
+
+
+def mark_textback(entry_id, sent, note=""):
+    with _conn() as c:
+        c.execute(
+            """UPDATE missed_calls
+               SET textback_sent = ?, sent_at = ?, note = ?
+               WHERE id = ?""",
+            (1 if sent else 0,
+             _now_utc().isoformat(timespec="seconds") if sent else None,
+             note, entry_id))
+
+
+def list_missed_calls(limit=50):
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM missed_calls ORDER BY id DESC LIMIT ?",
+            (limit,)).fetchall()]
+
+
+def textbacks_sent_today():
+    """How many text-backs were actually sent today (UTC) — for the daily cap."""
+    with _conn() as c:
+        return c.execute(
+            """SELECT COUNT(*) FROM missed_calls
+               WHERE textback_sent = 1
+               AND date(sent_at) = date('now')""").fetchone()[0]
+
+
+# ---------- opt-outs (STOP handling) ----------
+
+def _ensure_opt_outs(c):
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS opt_outs (
+            phone TEXT PRIMARY KEY,
+            source TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        )""")
+
+
+def is_opted_out(phone):
+    with _conn() as c:
+        _ensure_opt_outs(c)
+        return c.execute(
+            "SELECT 1 FROM opt_outs WHERE phone = ?", (phone,)).fetchone() is not None
+
+
+def set_opt_out(phone, opted_out, source=""):
+    with _conn() as c:
+        _ensure_opt_outs(c)
+        if opted_out:
+            c.execute(
+                "INSERT OR IGNORE INTO opt_outs (phone, source, created_at) VALUES (?, ?, ?)",
+                (phone, source, _now_utc().isoformat(timespec="seconds")))
+        else:
+            c.execute("DELETE FROM opt_outs WHERE phone = ?", (phone,))
+
+
+def list_opt_outs():
+    with _conn() as c:
+        _ensure_opt_outs(c)
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM opt_outs ORDER BY created_at DESC").fetchall()]

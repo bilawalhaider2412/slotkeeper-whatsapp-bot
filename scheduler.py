@@ -80,6 +80,10 @@ def process_due():
         if appt <= datetime.now(timezone.utc):
             db.mark_reminder(r["id"], "expired", "appointment already passed")
             continue
+        if db.is_opted_out(booking["phone"]):
+            db.mark_reminder(r["id"], "cancelled", "customer opted out (STOP)")
+            print(f"  reminder #{r['id']}: cancelled (opted out)", flush=True)
+            continue
         text = reminder_draft(booking)
         if send_whatsapp(booking["phone"], text):
             db.mark_reminder(r["id"], "sent")

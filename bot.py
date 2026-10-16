@@ -305,3 +305,52 @@ def reminder_draft(booking):
         f"at {BUSINESS['name']}:\n\n{booking['service']} — {booking['date']} at {booking['time']}\n"
         f"Booking ref: #{booking['id']}\n\nReply here if you need to reschedule."
     )
+
+
+def missed_call_textback():
+    """Instant WhatsApp reply sent to a missed caller."""
+    return (
+        f"Assalam-o-Alaikum! Sorry we missed your call \U0001f649\n"
+        f"This is the assistant for {BUSINESS['name']} ({BUSINESS['city']}). "
+        f"Want to book an appointment?\n\n"
+        f"Reply: 1 - Book  |  2 - Timings  |  3 - Prices"
+    )
+
+
+# ---------- opt-out (STOP) handling ----------
+
+OPT_OUT_PHRASES = (
+    "stop", "unsubscribe", "opt out", "optout", "stop messages",
+    "cancel messages", "no more messages", "do not message",
+    "bas", "bas karo", "band karo", "band kar do", "nahi chahiye",
+    "stop karo", "message mat karo", "message na karo", "msg mat karo",
+)
+OPT_IN_PHRASES = ("start", "resume", "shuru karo", "opt in")
+
+
+def _norm(text):
+    return " ".join(str(text or "").lower().split())
+
+
+def is_opt_out_text(text):
+    t = _norm(text)
+    return any(p == t or f" {p} " in f" {t} " for p in OPT_OUT_PHRASES)
+
+
+def is_opt_in_text(text):
+    t = _norm(text)
+    return any(p == t or f" {p} " in f" {t} " for p in OPT_IN_PHRASES)
+
+
+def opt_out_confirm():
+    return (
+        "Done — you won't receive messages from us again. "
+        "Reply START any time if you'd like to hear from us."
+    )
+
+
+def opt_in_confirm():
+    return (
+        f"Welcome back! You're opted in again. "
+        f"How can {BUSINESS['name']} help you today? Reply 1 to book."
+    )

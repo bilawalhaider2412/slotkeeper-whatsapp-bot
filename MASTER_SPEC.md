@@ -202,3 +202,51 @@ Do not claim the live WhatsApp bot is complete until an authorized test message 
 If external setup blocks completion, label the result accurately: “Application implemented; live activation pending [specific prerequisite].”
 
 Begin by inspecting the project and carry the implementation through to a verified result.
+
+---
+
+## 13. MISSED-CALL TEXT-BACK (added 2026-10-16)
+
+When a call goes unanswered, the missed-call notifier (phone app / telephony
+webhook) POSTs to `/api/missed-call` with `{caller_phone, secret}`. The app
+logs the call and instantly sends the caller a WhatsApp text-back inviting
+them to book; the normal bot conversation takes over from their reply.
+
+- Auth: shared `MISSED_CALL_SECRET` in the JSON body (timing-safe compare),
+  or owner basic auth when no secret is configured.
+- Anti-spam: the same caller gets at most one text-back per
+  `MISSED_CALL_COOLDOWN_MIN` (default 30) minutes; repeats are logged as
+  skipped.
+- Abuse protection: per-IP rate limiting (`MISSED_CALL_RATE_PER_MIN`,
+  default 30/min → HTTP 429), a daily cap on text-backs actually sent
+  (`MISSED_CALL_DAILY_CAP`, default 200/day), and strict phone validation
+  (7–15 digits only) so junk input can't burn WhatsApp quota.
+- Manual mode: when the WhatsApp API is not configured, the endpoint returns
+  the ready-to-forward draft text instead of sending.
+- Dashboard: new "Missed calls" section + `missed_textbacks` count card;
+  `GET /api/missed-calls` (owner-protected) lists the log.
+- Message text: `bot.missed_call_textback()`, built from BUSINESS name/city.
+- Tests: `tests/test_missed_call.py` — 15 checks (auth, cooldown, send path,
+  manual fallback, dashboard render). Phase-2 suite still passes.
+
+Remaining for production: the notifier itself (phone-side missed-call
+detection or cloud telephony webhook) and the live WhatsApp credentials —
+same activation prerequisites as the main bot.
+
+## 14. OPT-OUT (STOP) HANDLING (added 2026-10-16)
+
+Any customer can stop all bot messages by replying STOP (English and Roman
+Urdu phrases: stop, unsubscribe, opt out, bas, bas karo, band karo,
+nahi chahiye, message mat karo, …).
+
+- The webhook checks every incoming message before the normal bot flow:
+  opt-out phrase → recorded + confirmation sent; opted-out sender →
+  silence (except START / shuru karo, which opts them back in).
+- Honored everywhere: missed-call text-backs, scheduled 24h/2h reminders
+  (marked cancelled, "customer opted out"), and manual dashboard sends
+  (blocked with HTTP 409 until re-allowed).
+- Owner dashboard: "Opted out" section listing opted-out numbers with a
+  Re-allow button (`GET /api/opt-outs`, `POST /api/opt-outs/clear`,
+  owner-protected). Re-allow only with the customer's clear permission.
+- Tests: `tests/test_optout.py` — 14 checks (webhook STOP/START, silence,
+  scheduler skip, manual block, dashboard APIs). All suites green.

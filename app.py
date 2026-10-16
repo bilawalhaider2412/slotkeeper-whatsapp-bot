@@ -22,7 +22,7 @@ import requests
 from flask import Flask, Response, jsonify, redirect, render_template, request
 
 import db
-from bot import BUSINESS, confirmation_draft, handle_message, reminder_draft, parse_when
+from bot import BUSINESS, confirmation_draft, handle_message, reminder_draft, parse_when, missed_call_textback, is_opt_out_text, is_opt_in_text, opt_out_confirm, opt_in_confirm
 from scheduler import POLL_SECONDS, process_due
 
 app = Flask(__name__)
@@ -35,6 +35,33 @@ APP_SECRET = os.environ.get("APP_SECRET", "")  # Meta app secret -> enables HMAC
 GRAPH_API_VERSION = os.environ.get("GRAPH_API_VERSION", "v24.0")
 OWNER_USER = os.environ.get("OWNER_USER", "admin")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "change-me")
+# Shared secret for the missed-call notifier (phone app / telephony webhook).
+# If unset, the /api/missed-call endpoint falls back to owner basic auth.
+MISSED_CALL_SECRET = os.environ.get("MISSED_CALL_SECRET", "")
+MISSED_CALL_COOLDOWN_MIN = int(os.environ.get("MISSED_CALL_COOLDOWN_MIN", "30"))
+# Abuse protection: max requests/minute per caller IP, and max text-backs
+# actually sent per day (bounds WhatsApp cost if the notifier misbehaves).
+MISSED_CALL_RATE_PER_MIN = int(os.environ.get("MISSED_CALL_RATE_PER_MIN", "30"))
+MISSED_CALL_DAILY_CAP = int(os.environ.get("MISSED_CALL_DAILY_CAP", "200"))
+
+# In-memory sliding-window rate limiter (single gunicorn worker by design,
+# same as the embedded scheduler — see render.yaml).
+_rate_buckets = {}
+
+
+def _rate_limited(ip, limit_per_min):
+    now = time.time()
+    bucket = _rate_buckets.setdefault(ip, [])
+    bucket[:] = [t for t in bucket if now - t < 60]
+    if len(bucket) >= limit_per_min:
+        return True
+    bucket.append(now)
+    return False
+
+
+def _client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return forwarded.split(",")[0].strip() if forwarded else (request.remote_addr or "unknown")
 
 
 # ---------- WhatsApp Cloud API ----------
@@ -86,7 +113,19 @@ def incoming():
                     if message.get("type") != "text":
                         continue
                     sender = message["from"]
-                    reply = handle_message(sender, message["text"]["body"])
+                    body = message["text"]["body"]
+                    # STOP / opt-out handling runs before the normal bot flow.
+                    if is_opt_out_text(body):
+                        db.set_opt_out(sender, True, source="whatsapp")
+                        send_whatsapp(sender, opt_out_confirm())
+                        continue
+                    if db.is_opted_out(sender):
+                        if is_opt_in_text(body):
+                            db.set_opt_out(sender, False)
+                            send_whatsapp(sender, opt_in_confirm())
+                        # otherwise: stay silent, the user asked for no messages
+                        continue
+                    reply = handle_message(sender, body)
                     send_whatsapp(sender, reply)
     except Exception as exc:
         app.logger.exception("webhook error: %s", exc)
@@ -181,6 +220,8 @@ def api_notify(booking_id):
     booking = db.get_booking(booking_id)
     if not booking:
         return jsonify({"error": "not found"}), 404
+    if db.is_opted_out(booking["phone"]):
+        return jsonify({"error": "customer opted out (STOP) — re-allow them from the dashboard before messaging"}), 409
     text = confirmation_draft(booking) if kind == "confirmation" else reminder_draft(booking)
     result = send_whatsapp(booking["phone"], text)
     if result.get("sent"):
@@ -228,6 +269,78 @@ def api_waiting():
 @_protected
 def api_waiting_delete(entry_id):
     db.delete_waiting(entry_id)
+    return jsonify({"ok": True})
+
+
+# ---------- missed-call text-back ----------
+# Called by the missed-call notifier (phone app / telephony webhook) the
+# moment a call goes unanswered. Auth: shared MISSED_CALL_SECRET in the
+# JSON body, or owner basic auth when no secret is configured.
+
+def _missed_call_authorized(data):
+    auth = request.authorization
+    if auth and auth.username == OWNER_USER and auth.password == OWNER_PASSWORD:
+        return True
+    if MISSED_CALL_SECRET:
+        # timing-safe compare: never leak secret validity via response time
+        return hmac.compare_digest(str(data.get("secret", "")), MISSED_CALL_SECRET)
+    return False
+
+
+@app.route("/api/missed-call", methods=["POST"])
+def api_missed_call():
+    data = request.get_json(silent=True) or {}
+    if not _missed_call_authorized(data):
+        return jsonify({"error": "unauthorized"}), 403
+    if _rate_limited(_client_ip(), MISSED_CALL_RATE_PER_MIN):
+        return jsonify({"error": "rate limited, slow down"}), 429
+    caller = "".join(ch for ch in str(data.get("caller_phone", "")) if ch.isdigit()).strip()
+    # Plausible phone numbers only: 7-15 digits (E.164). Rejects junk that
+    # would burn WhatsApp quota or error out at Meta.
+    if not (7 <= len(caller) <= 15):
+        return jsonify({"error": "caller_phone must be 7-15 digits"}), 400
+    if db.textbacks_sent_today() >= MISSED_CALL_DAILY_CAP:
+        entry, _ = db.log_missed_call(caller, MISSED_CALL_COOLDOWN_MIN)
+        db.mark_textback(entry["id"], False, "daily cap reached")
+        app.logger.warning("missed-call: daily cap reached, not sending to %s", caller)
+        return jsonify({"ok": True, "sent": False, "reason": "daily cap"})
+    if db.is_opted_out(caller):
+        entry, _ = db.log_missed_call(caller, MISSED_CALL_COOLDOWN_MIN)
+        db.mark_textback(entry["id"], False, "opted out: no messages per user request")
+        return jsonify({"ok": True, "sent": False, "reason": "opted out"})
+    entry, should_send = db.log_missed_call(caller, MISSED_CALL_COOLDOWN_MIN)
+    if not should_send:
+        db.mark_textback(entry["id"], False, "cooldown: text-back already sent recently")
+        return jsonify({"ok": True, "sent": False, "reason": "cooldown"})
+    text = missed_call_textback()
+    result = send_whatsapp(caller, text)
+    if result.get("sent"):
+        db.mark_textback(entry["id"], True)
+        return jsonify({"ok": True, "sent": True, "id": entry["id"]})
+    # Manual mode: owner forwards the ready text themselves
+    db.mark_textback(entry["id"], False, "manual: WhatsApp API not configured")
+    return jsonify({"ok": True, "sent": False, "draft": text, "id": entry["id"]})
+
+
+@app.route("/api/missed-calls")
+@_protected
+def api_missed_calls():
+    return jsonify(db.list_missed_calls())
+
+
+@app.route("/api/opt-outs")
+@_protected
+def api_opt_outs():
+    return jsonify(db.list_opt_outs())
+
+
+@app.route("/api/opt-outs/clear", methods=["POST"])
+@_protected
+def api_opt_out_clear():
+    phone = "".join(ch for ch in str((request.get_json(silent=True) or {}).get("phone", "")) if ch.isdigit())
+    if not phone:
+        return jsonify({"error": "phone required"}), 400
+    db.set_opt_out(phone, False)
     return jsonify({"ok": True})
 
 
