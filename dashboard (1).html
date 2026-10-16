@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SlotKeeper — {{ business.name }}</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --green: #0a8f6a;
+    --green-bright: #25d366;
+    --green-dark: #0b3d2e;
+    --navy: #0e2a33;
+    --ink: #1d2b2f;
+    --muted: #64748b;
+    --bg: #eef4f1;
+    --card: #ffffff;
+    --line: #e2e8f0;
+    --gold: #f2b84b;
+    --red: #e5484d;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    margin: 0; color: var(--ink);
+    background:
+      radial-gradient(1200px 400px at 80% -80px, rgba(37,211,102,.14), transparent 60%),
+      radial-gradient(900px 380px at 10% -60px, rgba(10,143,106,.12), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(120deg, #0b3d2e 0%, #0a8f6a 70%, #12b981 100%);
+    color: #fff; padding: 26px 20px 30px; position: relative; overflow: hidden;
+  }
+  header::after {
+    content: ""; position: absolute; inset: 0; opacity: .14; pointer-events: none;
+    background-image: radial-gradient(circle at 12px 12px, #fff 1.6px, transparent 1.7px);
+    background-size: 26px 26px;
+  }
+  .head-inner { max-width: 1060px; margin: 0 auto; position: relative; z-index: 1;
+    display: flex; align-items: center; gap: 16px; }
+  .logo {
+    width: 52px; height: 52px; border-radius: 16px; flex: none;
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35);
+    display: grid; place-items: center; font-size: 26px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.18);
+  }
+  header h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+  header h1 small { display: block; font-size: 13px; font-weight: 400; opacity: .85; margin-top: 3px; letter-spacing: 0; }
+  .live {
+    margin-left: auto; flex: none; display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3);
+    padding: 8px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #4ade80;
+    box-shadow: 0 0 0 4px rgba(74,222,128,.25); animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(74,222,128,.08); } }
+
+  .wrap { max-width: 1060px; margin: -22px auto 0; padding: 0 16px 40px; position: relative; z-index: 2; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 8px; }
+  .card {
+    background: var(--card); border-radius: 16px; padding: 16px 18px;
+    box-shadow: 0 4px 14px rgba(11,61,46,.08); border: 1px solid rgba(226,232,240,.9);
+    display: flex; gap: 12px; align-items: center; position: relative; overflow: hidden;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(11,61,46,.12); }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--green); }
+  .card.gold::before { background: var(--gold); }
+  .card.blue::before { background: #3b82f6; }
+  .card.purple::before { background: #8b5cf6; }
+  .card.teal::before { background: #14b8a6; }
+  .ico {
+    width: 44px; height: 44px; border-radius: 12px; flex: none;
+    display: grid; place-items: center; font-size: 22px; background: #e8f7f1;
+  }
+  .card.gold .ico { background: #fef6e3; } .card.blue .ico { background: #e8f0fe; }
+  .card.purple .ico { background: #f1eafe; } .card.teal .ico { background: #e0faf6; }
+  .card b { font-size: 27px; display: block; line-height: 1.1; letter-spacing: -.02em; }
+  .card span { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+
+  h2 {
+    font-size: 18px; margin: 28px 0 12px; letter-spacing: -.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .tag {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    background: var(--green); color: #fff; padding: 3px 10px; border-radius: 999px;
+  }
+  .panel {
+    background: var(--card); border-radius: 16px; border: 1px solid rgba(226,232,240,.9);
+    box-shadow: 0 4px 14px rgba(11,61,46,.07); overflow: hidden;
+  }
+  .filters { display: flex; gap: 8px; padding: 12px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: #fafcfb; }
+  .filters button, .btn {
+    border: 1px solid #cbd5e1; background: #fff; border-radius: 10px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink);
+    transition: all .15s ease;
+  }
+  .filters button:hover, .btn:hover { border-color: var(--green); color: var(--green); }
+  .filters button.active { background: var(--green); color: #fff; border-color: var(--green); box-shadow: 0 3px 10px rgba(10,143,106,.3); }
+  .btn.primary { background: var(--green); color: #fff; border-color: var(--green); }
+  .btn.primary:hover { background: #097a5c; color: #fff; }
+  .btn.ok { background: #16a34a; color: #fff; border-color: #16a34a; }
+  .btn.bad { background: #fff; color: var(--red); border-color: #fecaca; }
+  .btn.bad:hover { background: var(--red); color: #fff; border-color: var(--red); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  th { background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: #f8fafc; }
+  tbody tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .awaiting { background: #fef3c7; color: #92400e; }
+  .confirmed { background: #dcfce7; color: #166534; }
+  .cancelled { background: #fee2e2; color: #991b1b; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row-form { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px; background: #fafcfb; border-top: 1px solid var(--line); }
+  .row-form input {
+    padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 14px; flex: 1; min-width: 140px;
+  }
+  .row-form input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(10,143,106,.15); }
+  #draft {
+    background: #fffbeb; border: 1px dashed #d97706; border-radius: 12px;
+    padding: 16px; margin-top: 12px; display: none; white-space: pre-wrap; font-size: 14px;
+  }
+  #draft.show { display: block; }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
+  .hint b { color: var(--ink); }
+  .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 14px; }
+  .empty .big { font-size: 30px; display: block; margin-bottom: 8px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 18px; }
+  @media (max-width: 640px) {
+    table { font-size: 12.5px; } th, td { padding: 9px 8px; }
+    header h1 { font-size: 19px; } .live { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="head-inner">
+    <div class="logo">🤖</div>
+    <h1>SlotKeeper <small>{{ business.name }} · {{ business.city }} · WhatsApp command center</small></h1>
+    <div class="live"><span class="dot"></span> Bot live</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="cards">
+    <div class="card gold"><div class="ico">⏳</div><div><b id="c-awaiting">{{ counts.awaiting }}</b><span>Awaiting confirmation</span></div></div>
+    <div class="card blue"><div class="ico">📅</div><div><b id="c-total">{{ counts.total }}</b><span>Total bookings</span></div></div>
+    <div class="card purple"><div class="ico">📋</div><div><b id="c-waiting">{{ counts.waiting }}</b><span>Waiting list</span></div></div>
+    <div class="card teal"><div class="ico">🔔</div><div><b id="c-due">{{ counts.due_reminders }}</b><span>Pending reminders</span></div></div>
+    <div class="card"><div class="ico">📞</div><div><b id="c-missed">{{ counts.missed_textbacks }}</b><span>Missed-call text-backs</span></div></div>
+  </div>
+
+  <h2>📅 Bookings <span class="tag">live</span></h2>
+  <div class="panel">
+    <div class="filters" id="filters">
+      <button data-f="" class="active">All</button>
+      <button data-f="Awaiting confirmation">Awaiting</button>
+      <button data-f="Confirmed">Confirmed</button>
+      <button data-f="Cancelled">Cancelled</button>
+      <button id="export" style="margin-left:auto">⬇ Export CSV</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>#</th><th>Customer</th><th>Service</th><th>When</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="bookings"><tr><td colspan="6"><div class="empty">Loading…</div></td></tr></tbody>
+    </table>
+    </div>
+  </div>
+  <div id="draft"></div>
+  <p class="hint" style="margin-top:10px">“Send confirmation” delivers via WhatsApp automatically when the API is connected; otherwise it shows you the ready-to-send text to forward manually.</p>
+
+  <h2>🔔 Reminder queue</h2>
+  <p class="hint">Automatic 24h + 2h reminders. The scheduler runs inside this app
+  (every {{ scheduler.poll_seconds }}s{% if scheduler.last_run_ago_s is not none %} — last check {{ scheduler.last_run_ago_s }}s ago{% endif %}{% if scheduler.last_error %} — <b style="color:#c82333">error: {{ scheduler.last_error }}</b>{% endif %}).
+  Sent via WhatsApp when the API is connected; otherwise shown here for manual sending.</p>
+  <div class="panel">
+  <table>
+    <thead><tr><th>Booking</th><th>Customer</th><th>Type</th><th>Send at (UTC)</th><th>Status</th></tr></thead>
+    <tbody id="reminders"><tr><td colspan="5"><div class="empty">Loading…</div></td></tr></tbody>
+  </table>
+  </div>
+
+  <h2>📞 Missed calls</h2>
+  <p class="hint">Calls that went unanswered. The notifier posts to <b>/api/missed-call</b> and the caller instantly gets a WhatsApp text-back inviting them to book. Repeat callers inside the cooldown window are logged but not re-messaged.</p>
+  <div class="panel">
+  <table>
+    <thead><tr><th>#</th><th>Caller</th><th>Called at (UTC)</th><th>Text-back</th><th>Note</th></tr></thead>
+    <tbody id="missed"><tr><td colspan="5"><div class="empty"><span class="big">📞</span>No missed calls logged yet.</div></td></tr></tbody>
+  </table>
+  </div>
+
+  <h2>📋 Waiting list</h2>
+  <div class="panel">
+  <table>
+    <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Note</th><th></th></tr></thead>
+    <tbody id="waiting"><tr><td colspan="5"><div class="empty">Loading…</div></td></tr></tbody>
+  </table>
+  <div class="row-form">
+    <input id="w-name" placeholder="Name">
+    <input id="w-phone" placeholder="Phone / WhatsApp">
+    <input id="w-note" placeholder="Note (optional)">
+    <button class="btn primary" id="w-add">Add</button>
+  </div>
+  </div>
+
+  <h2>🔕 Opted out</h2>
+  <p class="hint">Customers who replied STOP — the bot stays silent for them everywhere (replies, reminders, text-backs). Re-allow only with their clear permission.</p>
+  <div class="panel">
+  <table>
+    <thead><tr><th>Phone</th><th>Opted out at (UTC)</th><th></th></tr></thead>
+    <tbody id="optouts"><tr><td colspan="3"><div class="empty">Loading…</div></td></tr></tbody>
+  </table>
+  </div>
+
+  <footer>SlotKeeper · WhatsApp booking &amp; reminder system · AsaanBot</footer>
+</div>
+<script>
+const pill = s => `<span class="pill ${s==='Confirmed'?'confirmed':s==='Cancelled'?'cancelled':'awaiting'}">${s}</span>`;
+let curFilter = '';
+
+async function load() {
+  const bs = await (await fetch('/api/bookings' + (curFilter ? '?status=' + encodeURIComponent(curFilter) : ''))).json();
+  document.getElementById('bookings').innerHTML = bs.length ? bs.map(b => `
+    <tr>
+      <td><b>#${b.id}</b></td>
+      <td><b>${esc(b.name)}</b><br><small style="color:#64748b">${esc(b.phone)}</small></td>
+      <td>${esc(b.service)}<br><small style="color:#64748b">${esc(b.price)}</small></td>
+      <td>${esc(b.date)}<br><small style="color:#64748b">${esc(b.time)}</small></td>
+      <td>${pill(b.status)}</td>
+      <td><div class="actions">
+        ${b.status !== 'Confirmed' ? `<button class="btn ok" onclick="setStatus(${b.id},'Confirmed')">Confirm</button>` : ''}
+        ${b.status !== 'Cancelled' ? `<button class="btn bad" onclick="setStatus(${b.id},'Cancelled')">Cancel</button>` : ''}
+        <button class="btn" onclick="notify(${b.id},'confirmation')">Send confirmation</button>
+        <button class="btn" onclick="notify(${b.id},'reminder')">Reminder</button>
+        ${b.status === 'Confirmed' || b.status === 'Awaiting confirmation' ? `<button class="btn" onclick="resched(${b.id})">Reschedule</button>` : ''}
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="6"><div class="empty"><span class="big">📭</span>No bookings yet — they appear here when customers book on WhatsApp.</div></td></tr>';
+
+  const w = await (await fetch('/api/waiting')).json();
+  document.getElementById('waiting').innerHTML = w.length ? w.map(x => `
+    <tr><td><b>#${x.id}</b></td><td>${esc(x.name)}</td><td>${esc(x.phone)}</td><td>${esc(x.note || '')}</td>
+    <td><button class="btn bad" onclick="delWaiting(${x.id})">Remove</button></td></tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty"><span class="big">📋</span>Waiting list is empty.</div></td></tr>';
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function setStatus(id, status) {
+  await fetch(`/api/bookings/${id}/status`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status})});
+  load();
+}
+async function notify(id, kind) {
+  const r = await (await fetch(`/api/bookings/${id}/notify`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind})})).json();
+  const d = document.getElementById('draft');
+  if (r.error && r.error.includes('opted out')) { alert('⚠️ ' + r.error); return; }
+  if (r.sent) { d.classList.remove('show'); alert('Sent on WhatsApp.'); }
+  else { d.textContent = 'WhatsApp API not connected — copy & send manually:\n\n' + r.draft; d.classList.add('show'); d.scrollIntoView(); }
+}
+async function delWaiting(id) {
+  await fetch(`/api/waiting/${id}`, {method: 'DELETE'});
+  load();
+}
+async function resched(id) {
+  const when = prompt('New date and time (e.g. "Saturday 5pm" or "21 Oct 11am"):');
+  if (!when) return;
+  const r = await (await fetch(`/api/bookings/${id}/reschedule`, {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date: when.trim(), time: ''})})).json();
+  if (r.ok) { alert('Moved to ' + r.when); load(); }
+  else { alert('Could not reschedule: ' + (r.error || 'unknown error')); }
+}
+async function loadReminders() {
+  const rs = await (await fetch('/api/reminders')).json();
+  const stPill = s => `<span class="pill ${s==='sent'?'confirmed':(s==='failed'||s==='expired')?'cancelled':'awaiting'}">${s}</span>`;
+  document.getElementById('reminders').innerHTML = rs.length ? rs.map(r => `
+    <tr><td><b>#${r.booking_id}</b></td><td>${esc(r.customer)}<br><small style="color:#64748b">${esc(r.service || '')}</small></td>
+    <td>${esc(r.kind)} reminder</td><td>${esc(r.send_at)}</td><td>${stPill(r.status)}</td></tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty"><span class="big">🔔</span>No reminders scheduled yet.</div></td></tr>';
+
+  const mc = await (await fetch('/api/missed-calls')).json();
+  const mcPill = m => m.textback_sent
+    ? '<span class="pill confirmed">sent</span>'
+    : `<span class="pill awaiting">${m.note && m.note.startsWith('cooldown') ? 'skipped (cooldown)' : 'logged'}</span>`;
+  document.getElementById('missed').innerHTML = mc.length ? mc.map(m => `
+    <tr><td><b>#${m.id}</b></td><td>${esc(m.caller_phone)}</td><td>${esc(m.called_at)}</td>
+    <td>${mcPill(m)}</td><td>${esc(m.note || '')}</td></tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty"><span class="big">📞</span>No missed calls logged yet.</div></td></tr>';
+}
+async function loadOptOuts() {
+  const os = await (await fetch('/api/opt-outs')).json();
+  document.getElementById('optouts').innerHTML = os.length ? os.map(o => `
+    <tr><td><b>${esc(o.phone)}</b></td><td>${esc(o.created_at || '')}</td>
+    <td><button class="btn ok" onclick="reAllow('${esc(o.phone)}')">Re-allow</button></td></tr>`).join('')
+    : '<tr><td colspan="3"><div class="empty"><span class="big">🔕</span>Nobody opted out.</div></td></tr>';
+}
+async function reAllow(phone) {
+  await fetch('/api/opt-outs/clear', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phone})});
+  loadOptOuts();
+}
+document.getElementById('filters').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON' || e.target.id === 'export') return;
+  document.querySelectorAll('#filters button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  curFilter = e.target.dataset.f;
+  load();
+});
+document.getElementById('export').onclick = () => location.href = '/export.csv';
+document.getElementById('w-add').onclick = async () => {
+  const name = document.getElementById('w-name').value.trim();
+  const phone = document.getElementById('w-phone').value.trim();
+  if (!name || !phone) { alert('Name and phone are required.'); return; }
+  await fetch('/api/waiting', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, phone, note: document.getElementById('w-note').value.trim()})});
+  document.getElementById('w-name').value = document.getElementById('w-phone').value = document.getElementById('w-note').value = '';
+  load();
+};
+load();
+loadReminders();
+loadOptOuts();
+</script>
+</body>
+</html>
